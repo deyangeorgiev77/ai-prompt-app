@@ -1,30 +1,29 @@
-from fastapi import FastAPI, File, UploadFile, Form
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import FastAPI, File, UploadFile
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import shutil
 import os
-from typing import List
 import pandas as pd
+from typing import List
 from uuid import uuid4
 
 app = FastAPI()
 
-# Allow all CORS origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"], allow_credentials=True,
+    allow_methods=["*"], allow_headers=["*"]
 )
 
 UPLOAD_DIR = "uploaded_images"
 CSV_DIR = "generated_csv"
 HTML_DIR = "generated_html"
+RTF_DIR = "uploaded_rtf"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(CSV_DIR, exist_ok=True)
 os.makedirs(HTML_DIR, exist_ok=True)
+os.makedirs(RTF_DIR, exist_ok=True)
 
 app.mount("/images", StaticFiles(directory=UPLOAD_DIR), name="images")
 app.mount("/csv", StaticFiles(directory=CSV_DIR), name="csv")
@@ -34,67 +33,76 @@ app.mount("/html", StaticFiles(directory=HTML_DIR), name="html")
 def form():
     return """
     <html>
-        <head><title>AI Prompt Generator</title></head>
+        <head><title>Upload JPGs + RTF File</title></head>
         <body>
-            <h1>Upload JPG Images and Submit Task</h1>
+            <h1>📤 Upload JPG Images and RTF Task File</h1>
             <form action="/generate" enctype="multipart/form-data" method="post">
+                <p><b>Upload JPG images:</b></p>
                 <input type="file" name="files" accept=".jpg" multiple required><br><br>
-                <textarea name="task" rows="10" cols="80" placeholder="Enter your task instructions here..." required></textarea><br><br>
+                <p><b>Upload RTF file with XXXX and YYYY:</b></p>
+                <input type="file" name="rtf" accept=".rtf" required><br><br>
                 <input type="submit" value="Generate">
             </form>
+            <hr>
+            <p>🔗 <a href="/html/results.html" target="_blank">View Results Page</a></p>
         </body>
     </html>
     """
 
 @app.post("/generate", response_class=HTMLResponse)
-def generate(files: List[UploadFile] = File(...), task: str = Form(...)):
-    image_names = []
-    prompts = []
-    html_blocks = []
-    csv_rows = []
+async def generate(files: List[UploadFile] = File(...), rtf: UploadFile = File(...)):
+    rtf_path = os.path.join(RTF_DIR, rtf.filename)
+    with open(rtf_path, "wb") as f:
+        shutil.copyfileobj(rtf.file, f)
+
+    with open(rtf_path, "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+    if "XXXX" in content and "YYYY" in content:
+        task_text = content.split("XXXX")[1].split("YYYY")[0].strip()
+        keyword_block = content.split("YYYY")[1].strip()
+        keywords = [k.strip() for k in keyword_block.split(",") if k.strip()]
+    else:
+        task_text = "Missing XXXX section"
+        keywords = []
+
+    image_names, html_blocks = [], []
 
     for file in files:
-        unique_id = uuid4().hex[:8]
-        filename = f"{unique_id}_{file.filename}"
+        filename = f"{uuid4().hex[:6]}_{file.filename}"
         image_path = os.path.join(UPLOAD_DIR, filename)
         with open(image_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
-        image_names.append(filename)
 
-        prompt = f"Auto-generated prompt for {filename}: Based on task -> {task}"
-        prompts.append(prompt)
-
-        # Save CSV
+        prompt = f"🎬 AI Video Prompt: Визуализирай {filename}, комбинирай го със следното описание: {task_text}. Използвай ключови думи като: {', '.join(keywords[:10])}."
         mp4_name = filename.replace(".jpg", ".mp4")
-        csv_filename = filename.replace(".jpg", ".csv")
-        csv_path = os.path.join(CSV_DIR, csv_filename)
+        csv_name = filename.replace(".jpg", ".csv")
+        csv_path = os.path.join(CSV_DIR, csv_name)
+
         row = {
             "FileName": mp4_name,
             "Title": f"Title for {filename}",
-            "Description": f"Description based on {filename}",
-            "Headline": f"Headline for {filename}",
-            "Keywords": "keyword1, keyword2, keyword3"
+            "Description": f"Generated based on image + task.",
+            "Headline": f"Prompt: {prompt[:50]}...",
+            "Keywords": ", ".join(keywords[:15])
         }
         pd.DataFrame([row]).to_csv(csv_path, index=False)
 
-        # HTML block
-        html_block = f"""
-        <div style='margin-bottom:20px;'>
+        html_blocks.append(f"""
+        <div style='margin-bottom:30px;'>
             <h3>{filename}</h3>
-            <img src='/images/{filename}' style='max-width:400px;'><br>
+            <img src='/images/{filename}' style='max-width:400px'><br>
             <pre>{prompt}</pre>
-            <a href='/csv/{csv_filename}' download>Download CSV</a>
+            <a href='/csv/{csv_name}' download>⬇ Download CSV</a>
         </div>
-        """
-        html_blocks.append(html_block)
+        """)
+        image_names.append(filename)
 
-    html_output = "<html><body><h1>Results</h1>" + "".join(html_blocks) + "</body></html>"
-    html_file = os.path.join(HTML_DIR, "results.html")
-    with open(html_file, "w", encoding="utf-8") as f:
-        f.write(html_output)
+    full_html = f"<html><body><h1>✅ Results</h1>{''.join(html_blocks)}</body></html>"
+    with open(os.path.join(HTML_DIR, "results.html"), "w", encoding="utf-8") as f:
+        f.write(full_html)
 
     return f"""
-    <h2>✅ Files Processed: {len(image_names)}</h2>
-    <ul>{''.join([f'<li>{img}</li>' for img in image_names])}</ul>
-    <p>📄 <a href='/html/results.html' target='_blank'>View Full HTML Report</a></p>
+    <h2>✅ Processed {len(image_names)} images</h2>
+    <ul>{''.join([f"<li>{img}</li>" for img in image_names])}</ul>
+    <p>🔗 <a href='/html/results.html' target='_blank'>View Results Page</a></p>
     """
