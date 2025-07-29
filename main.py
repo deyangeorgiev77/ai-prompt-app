@@ -1,45 +1,53 @@
 
-import os
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from typing import List
-import shutil
-import pandas as pd
+import os
 
 app = FastAPI()
 
-# Static for uploaded images
-if not os.path.exists("uploaded_images"):
-    os.makedirs("uploaded_images")
+# Създаване на папка за качени файлове
+os.makedirs("uploaded_images", exist_ok=True)
+os.makedirs("uploaded_rtf", exist_ok=True)
 
+# Монтиране на папката за изображения като статични файлове
 app.mount("/static", StaticFiles(directory="uploaded_images"), name="static")
 
-@app.post("/upload/")
-async def upload_files(
-    images: List[UploadFile] = File(...),
-    text_file: UploadFile = File(...),
-    start_number: int = Form(...)
+# Задаване на директорията за шаблони
+templates = Jinja2Templates(directory="templates")
+
+# Начална страница - зарежда index.html
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+# Рут за обработка на формата
+@app.post("/process/")
+async def process_form(
+    request: Request,
+    start_number: int = Form(...),
+    rtf_file: UploadFile = File(...),
+    images: List[UploadFile] = File(...)
 ):
-    # Save uploaded text file
-    rtf_or_txt_path = os.path.join("uploaded_images", text_file.filename)
-    with open(rtf_or_txt_path, "wb") as buffer:
-        shutil.copyfileobj(text_file.file, buffer)
+    # Запазване на .rtf/.txt файла
+    rtf_path = os.path.join("uploaded_rtf", rtf_file.filename)
+    with open(rtf_path, "wb") as f:
+        f.write(await rtf_file.read())
 
-    # Read text content
-    with open(rtf_or_txt_path, "r", encoding="utf-8", errors="ignore") as f:
-        full_text = f.read()
+    # Запазване на JPG файловете
+    saved_filenames = []
+    current_number = start_number
+    for image in images:
+        filename = f"AI_{current_number}.jpg"
+        path = os.path.join("uploaded_images", filename)
+        with open(path, "wb") as f:
+            f.write(await image.read())
+        saved_filenames.append(filename)
+        current_number += 1
 
-    # Parse after XXXX and after YYYY
-    if "XXXX" in full_text:
-        text_after_xxxx = full_text.split("XXXX", 1)[1].split("YYYY", 1)[0].strip()
-    else:
-        text_after_xxxx = ""
-
-    if "YYYY" in full_text:
-        keyword_part = full_text.split("YYYY", 1)[1]
-        keywords = [k.strip() for k in keyword_part.replace(",", "\n").split("\n")]
-    else:
-        keywords = []
-
-    return {"text": text_after_xxxx, "keywords": keywords}
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "message": f"Успешно качени {len(saved_filenames)} снимки и {rtf_file.filename}."
+    })
