@@ -1,100 +1,72 @@
-from fastapi import FastAPI, File, UploadFile, Form
-from fastapi.responses import HTMLResponse, FileResponse
-from fastapi.middleware.cors import CORSMiddleware
+
+from fastapi import FastAPI, UploadFile, File, Form
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-import shutil
+from fastapi.templating import Jinja2Templates
+from starlette.requests import Request
 import os
-from typing import List
+import shutil
 import pandas as pd
-from uuid import uuid4
+from typing import List
 
 app = FastAPI()
 
-# Allow all CORS origins
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.mount("/static", StaticFiles(directory="uploaded_images"), name="static")
+templates = Jinja2Templates(directory="templates")
 
-UPLOAD_DIR = "uploaded_images"
-CSV_DIR = "generated_csv"
-HTML_DIR = "generated_html"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(CSV_DIR, exist_ok=True)
-os.makedirs(HTML_DIR, exist_ok=True)
-
-app.mount("/images", StaticFiles(directory=UPLOAD_DIR), name="images")
-app.mount("/csv", StaticFiles(directory=CSV_DIR), name="csv")
-app.mount("/html", StaticFiles(directory=HTML_DIR), name="html")
+UPLOAD_FOLDER = "uploaded_images"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs("uploaded_texts", exist_ok=True)
 
 @app.get("/", response_class=HTMLResponse)
-def form():
-    return """
-    <html>
-        <head><title>AI Prompt Generator</title></head>
-        <body>
-            <h1>Upload JPG Images and Submit Task</h1>
-            <form action="/generate" enctype="multipart/form-data" method="post">
-                <input type="file" name="files" accept=".jpg" multiple required><br><br>
-                <textarea name="task" rows="10" cols="80" placeholder="Enter your task instructions here..." required></textarea><br><br>
-                <input type="submit" value="Generate">
-            </form>
-        </body>
-    </html>
-    """
+async def main_page(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
-@app.post("/generate", response_class=HTMLResponse)
-def generate(files: List[UploadFile] = File(...), task: str = Form(...)):
-    image_names = []
-    prompts = []
-    html_blocks = []
-    csv_rows = []
+@app.post("/upload/")
+async def upload_files(
+    request: Request,
+    start_number: int = Form(...),
+    text_file: UploadFile = File(...),
+    files: List[UploadFile] = File(...)
+):
+    text_path = f"uploaded_texts/{text_file.filename}"
+    with open(text_path, "wb") as f:
+        f.write(await text_file.read())
 
-    for file in files:
-        unique_id = uuid4().hex[:8]
-        filename = f"{unique_id}_{file.filename}"
-        image_path = os.path.join(UPLOAD_DIR, filename)
-        with open(image_path, "wb") as f:
-            shutil.copyfileobj(file.file, f)
-        image_names.append(filename)
+    with open(text_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    try:
+        xxxx_text = content.split("XXXX")[1].split("YYYY")[0].strip()
+        yyyy_keywords = [kw.strip() for kw in content.split("YYYY")[1].splitlines() if kw.strip()]
+    except IndexError:
+        xxxx_text = "No XXXX found"
+        yyyy_keywords = ["keyword1", "keyword2"]
 
-        prompt = f"Auto-generated prompt for {filename}: Based on task -> {task}"
-        prompts.append(prompt)
+    output_html = ""
+    for idx, img in enumerate(files):
+        filename = f"AI_{start_number + idx}.jpg"
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        with open(filepath, "wb") as f:
+            f.write(await img.read())
 
-        # Save CSV
-        mp4_name = filename.replace(".jpg", ".mp4")
-        csv_filename = filename.replace(".jpg", ".csv")
-        csv_path = os.path.join(CSV_DIR, csv_filename)
-        row = {
-            "FileName": mp4_name,
-            "Title": f"Title for {filename}",
-            "Description": f"Description based on {filename}",
-            "Headline": f"Headline for {filename}",
-            "Keywords": "keyword1, keyword2, keyword3"
-        }
-        pd.DataFrame([row]).to_csv(csv_path, index=False)
+        prompt = f"This is a test prompt for image {filename}. Integrated text: {xxxx_text}. Keywords: {', '.join(yyyy_keywords[:10])}"
+        csv_filename = f"AI-video_{start_number + idx}.csv"
+        df = pd.DataFrame([{
+            "FileName": f"AI-video_{start_number + idx}.mp4",
+            "Title": f"Generated title for {filename}",
+            "Description": f"Generated description for {filename}",
+            "Headline": f"Generated headline for {filename}",
+            "Keywords": ", ".join(yyyy_keywords)
+        }])
+        df.to_csv(f"/mnt/data/{csv_filename}", index=False)
 
-        # HTML block
-        html_block = f"""
-        <div style='margin-bottom:20px;'>
-            <h3>{filename}</h3>
-            <img src='/images/{filename}' style='max-width:400px;'><br>
-            <pre>{prompt}</pre>
-            <a href='/csv/{csv_filename}' download>Download CSV</a>
-        </div>
-        """
-        html_blocks.append(html_block)
+        output_html += f"""
+<div style='margin-bottom: 20px'>
+  <img src='/static/{filename}' width='300'><br>
+  <b>{filename}</b><br>
+  <textarea rows='6' cols='80'>{prompt} > {csv_filename}</textarea><br>
+  <a href='sandbox:/mnt/data/{csv_filename}' target='_blank'>Download {csv_filename}</a>
+</div>
+"""
 
-    html_output = "<html><body><h1>Results</h1>" + "".join(html_blocks) + "</body></html>"
-    html_file = os.path.join(HTML_DIR, "results.html")
-    with open(html_file, "w", encoding="utf-8") as f:
-        f.write(html_output)
-
-    return f"""
-    <h2>✅ Files Processed: {len(image_names)}</h2>
-    <ul>{''.join([f'<li>{img}</li>' for img in image_names])}</ul>
-    <p>📄 <a href='/html/results.html' target='_blank'>View Full HTML Report</a></p>
-    """
+    return HTMLResponse(content=output_html, status_code=200)
