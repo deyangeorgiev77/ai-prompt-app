@@ -1,65 +1,45 @@
 
-from fastapi import FastAPI, File, Form, UploadFile
+import os
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from typing import List
-import os
+import shutil
 import pandas as pd
 
 app = FastAPI()
+
+# Static for uploaded images
+if not os.path.exists("uploaded_images"):
+    os.makedirs("uploaded_images")
+
 app.mount("/static", StaticFiles(directory="uploaded_images"), name="static")
 
-UPLOAD_FOLDER = "uploaded_images"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-@app.get("/", response_class=HTMLResponse)
-async def root():
-    with open("templates/index.html", "r") as f:
-        return f.read()
-
-@app.post("/generate")
-async def generate(
-    start_number: int = Form(...),
+@app.post("/upload/")
+async def upload_files(
+    images: List[UploadFile] = File(...),
     text_file: UploadFile = File(...),
-    files: List[UploadFile] = File(...)
+    start_number: int = Form(...)
 ):
-    # Прочети текста от .rtf/.txt
-    raw_text = (await text_file.read()).decode("utf-8", errors="ignore")
-    if "XXXX" not in raw_text or "YYYY" not in raw_text:
-        return {"error": "Missing XXXX or YYYY section in the uploaded text file."}
+    # Save uploaded text file
+    rtf_or_txt_path = os.path.join("uploaded_images", text_file.filename)
+    with open(rtf_or_txt_path, "wb") as buffer:
+        shutil.copyfileobj(text_file.file, buffer)
 
-    # Извличане на текст и ключови думи
-    text_part = raw_text.split("XXXX")[1].split("YYYY")[0].strip()
-    keyword_part = raw_text.split("YYYY")[1].strip()
-    keywords = [k.strip() for k in keyword_part.replace(",", "
-").splitlines() if k.strip()]
+    # Read text content
+    with open(rtf_or_txt_path, "r", encoding="utf-8", errors="ignore") as f:
+        full_text = f.read()
 
-    # Създаване на output CSV
-    rows = []
-    current = start_number
-    for file in files:
-        filename = f"AI-video_{current:05}.jpg"
-        file_path = os.path.join(UPLOAD_FOLDER, filename)
-        with open(file_path, "wb") as buffer:
-            buffer.write(await file.read())
+    # Parse after XXXX and after YYYY
+    if "XXXX" in full_text:
+        text_after_xxxx = full_text.split("XXXX", 1)[1].split("YYYY", 1)[0].strip()
+    else:
+        text_after_xxxx = ""
 
-        # Примерен промпт
-        prompt = (
-            f"This image shows something visually descriptive. {text_part}. "
-            f"It includes important elements such as: {', '.join(keywords[:10])}."
-        )
+    if "YYYY" in full_text:
+        keyword_part = full_text.split("YYYY", 1)[1]
+        keywords = [k.strip() for k in keyword_part.replace(",", "\n").split("\n")]
+    else:
+        keywords = []
 
-        rows.append({
-            "Filename": f"AI-video_{current:05}.csv",
-            "Title": f"Generated video prompt {current}",
-            "Description": prompt[:200],
-            "Headline": "AI-generated prompt",
-            "Keywords": ", ".join(keywords[:49])
-        })
-        current += 1
-
-    df = pd.DataFrame(rows)
-    csv_path = f"{UPLOAD_FOLDER}/AI-video_{start_number:05}.csv"
-    df.to_csv(csv_path, index=False)
-
-    return {"message": f"Generated metadata for {len(rows)} images.", "csv": csv_path}
+    return {"text": text_after_xxxx, "keywords": keywords}
