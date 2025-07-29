@@ -2,21 +2,21 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>AI Prompt App</title>
+    <title>Upload your images and .rtf/.txt file</title>
 </head>
 <body>
-  <h2>Upload your images and .rtf/.txt file</h2>
-  <form action="/upload/" method="post" enctype="multipart/form-data">
-    <label>Start number (e.g. 3200):</label><br>
-    <input type="number" name="start_number" required><br><br>
+    <h1><b>Upload your images and .rtf/.txt file</b></h1>
+    <form method="post" action="/generate" enctype="multipart/form-data">
+        <label for="start_number">Start number (e.g. 3200):</label><br>
+        <input type="number" id="start_number" name="start_number" required><br><br>
 
-    <label>Upload .rtf or .txt file:</label><br>
-    <input type="file" name="text_file" accept=".rtf,.txt" required><br><br>
+        <label for="text_file">Upload .rtf or .txt file:</label><br>
+        <input type="file" id="text_file" name="text_file" accept=".rtf,.txt" required><br><br>
 
-    <label>Upload JPG images:</label><br>
-    <input type="file" name="files" multiple accept=".jpg"><br><br>
+        <label for="files">Upload JPG images:</label><br>
+        <input type="file" id="files" name="files" accept=".jpg,.jpeg" multiple required><br><br>
 
-    <button type="submit">Submit</button>
-  </form>
+        <input type="submit" value="Submit">
+    </form>
 </body>
 </html>
