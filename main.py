@@ -1,8 +1,8 @@
-
 from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pathlib import Path
 from typing import List
 import os
 import shutil
@@ -12,12 +12,12 @@ app = FastAPI()
 BASE_DIR = Path(__file__).resolve().parent
 
 # Create required directories
-for d in ['uploaded_images', 'uploaded_texts', 'generated_csv']:
-    os.makedirs(os.path.join(BASE_DIR, d), exist_ok=True)
+for folder in ['uploaded_images', 'uploaded_texts', 'generated_csv']:
+    (BASE_DIR / folder).mkdir(exist_ok=True)
 
 # Mount static routes
-app.mount('/static', StaticFiles(directory=os.path.join(BASE_DIR, 'uploaded_images')), name='static')
-app.mount('/csv', StaticFiles(directory=os.path.join(BASE_DIR, 'generated_csv')), name='csv')
+app.mount('/static', StaticFiles(directory=str(BASE_DIR / 'uploaded_images')), name='static')
+app.mount('/csv', StaticFiles(directory=str(BASE_DIR / 'generated_csv')), name='csv')
 
 templates = Jinja2Templates(directory=str(BASE_DIR / 'templates'))
 
@@ -38,11 +38,9 @@ async def upload_and_generate(
     with open(text_path, 'wb') as f:
         shutil.copyfileobj(text_file.file, f)
     content = text_path.read_text(encoding='utf-8', errors='ignore')
-    # Parse parts
     part_xxxx = content.split('XXXX')[1].split('YYYY')[0].strip() if 'XXXX' in content and 'YYYY' in content else ''
     keywords = [kw.strip() for kw in content.split('YYYY')[1].splitlines() if kw.strip()] if 'YYYY' in content else []
 
-    # Generate per-image CSV and build HTML
     html = '<h2>Results</h2>'
     for idx, img in enumerate(images):
         num = start_number + idx
@@ -52,7 +50,7 @@ async def upload_and_generate(
         img_path = BASE_DIR / 'uploaded_images' / img_name
         with open(img_path, 'wb') as f:
             shutil.copyfileobj(img.file, f)
-        # Create single-row DataFrame
+        # Prepare CSV
         row = {
             'FileName': f'AI-video_{num:05d}.mp4',
             'Title': f'Generated Title {num}',
@@ -61,10 +59,9 @@ async def upload_and_generate(
             'Keywords': ', '.join(keywords)
         }
         df = pd.DataFrame([row])
-        # Save CSV
         csv_path = BASE_DIR / 'generated_csv' / csv_name
         df.to_csv(csv_path, index=False)
-        # Build prompt for this image
+        # Prompt text
         prompt = f"""{task.strip()} {part_xxxx} Keywords: {', '.join(keywords)} > {csv_name}"""
         # Append to HTML
         html += f"<div style='margin-bottom:30px;'>"
