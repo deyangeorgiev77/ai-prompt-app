@@ -69,18 +69,10 @@ async def upload_and_generate(
 
         # Call OpenAI for prompt, title, description, headline, keywords
         system_msg = "You are a creative AI assistant specialized in generating detailed video prompts."
-        user_msg = (
-            f"Generate for the following:
-"
-            f"Image Description: {part_xxxx}
-"
-            f"Keywords: {', '.join(keywords)}
-"
-            f"Instructions: Create a detailed AI video prompt (>=300 characters, no mention of clip length), "
-            f"a Title (14-60 words), a Description (16-20 words), a Headline (14-16 words), "
-            f"and 34-40 unique keywords (first 8 single words). "
-            f"Return a JSON object with keys: prompt, title, description, headline, keywords."
-        )
+        user_msg = f"""Generate for the following:
+Image Description: {part_xxxx}
+Keywords: {', '.join(keywords)}
+Instructions: Create a detailed AI video prompt (>=300 characters, no mention of clip length), a Title (14-60 words), a Description (16-20 words), a Headline (14-16 words), and 34-40 unique keywords (first 8 single words). Return a JSON object with keys: prompt, title, description, headline, keywords."""
         response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[
@@ -107,7 +99,7 @@ async def upload_and_generate(
         html += (
             f"<div style='margin-bottom:30px;'>"
             f"<img src='/static/{img_name}' width='300'><br>"
-            f"<a href='/csv/{csv_name}'>Download {csv_name}</a><br>"
+            f"<a href='/csv/{csv_name}' target='_blank'>Download {csv_name}</a><br>"
             f"<pre style='white-space:pre-wrap; background:#f4f4f4; padding:10px;'>{prompt_text}</pre>"
             "</div>"
         )
