@@ -2,52 +2,66 @@ from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pathlib import Path
 from typing import List
-import shutil
 import os
+import shutil
+import pandas as pd
 
 app = FastAPI()
-BASE_DIR = Path(__file__).resolve().parent
-UPLOAD_DIR = BASE_DIR / "uploads"
-UPLOAD_DIR.mkdir(exist_ok=True)
 
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+# Create necessary directories
+for d in ['uploaded_images', 'uploaded_texts', 'generated_csv']:
+    os.makedirs(d, exist_ok=True)
+
+# Mount static directories
+app.mount("/static", StaticFiles(directory="uploaded_images"), name="static")
+app.mount("/csv", StaticFiles(directory="generated_csv"), name="csv")
+
+# Templates
+templates = Jinja2Templates(directory="templates")
 
 @app.get("/", response_class=HTMLResponse)
-async def form_get(request: Request):
+async def get_form(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-@app.post("/process/")
-async def handle_upload(
+@app.post("/upload", response_class=HTMLResponse)
+async def upload(
     request: Request,
     start_number: int = Form(...),
-    template: str = Form(...),
     text_file: UploadFile = File(...),
+    task: str = Form(...),
     images: List[UploadFile] = File(...)
 ):
-    output_dir = BASE_DIR / "outputs"
-    output_dir.mkdir(exist_ok=True)
-
-    text_path = UPLOAD_DIR / text_file.filename
+    # Save text file
+    text_path = os.path.join('uploaded_texts', text_file.filename)
     with open(text_path, "wb") as f:
         shutil.copyfileobj(text_file.file, f)
+    content = open(text_path, encoding='utf-8', errors='ignore').read()
+    part_xxxx = content.split("XXXX")[1].split("YYYY")[0].strip() if "XXXX" in content and "YYYY" in content else ""
+    keywords = [kw.strip() for kw in content.split("YYYY")[1].splitlines() if kw.strip()] if "YYYY" in content else []
 
-    image_paths = []
-    for img in images:
-        img_path = UPLOAD_DIR / img.filename
+    # Generate CSV
+    rows = []
+    for idx, img in enumerate(images):
+        num = start_number + idx
+        img_name = f"AI_{num}.jpg"
+        img_path = os.path.join("uploaded_images", img_name)
         with open(img_path, "wb") as f:
             shutil.copyfileobj(img.file, f)
-        image_paths.append(img_path)
+        rows.append({
+            "FileName": f"AI-video_{num}.mp4",
+            "Title": f"Generated Title {num}",
+            "Description": part_xxxx,
+            "Headline": f"AI Headline {num}",
+            "Keywords": ", ".join(keywords)
+        })
+    df = pd.DataFrame(rows)
+    csv_name = f"AI-video_{start_number}.csv"
+    csv_path = os.path.join("generated_csv", csv_name)
+    df.to_csv(csv_path, index=False)
 
-    # Dummy HTML generation placeholder
-    html_content = "<h2>Uploaded files processed.</h2><ul>"
-    html_content += f"<li>Start number: {start_number}</li>"
-    html_content += f"<li>Template content: {template[:100]}...</li>"
-    html_content += f"<li>Text file: {text_file.filename}</li>"
-    html_content += "<li>Images:</li><ul>"
-    for img in image_paths:
-        html_content += f"<li>{img.name}</li>"
-    html_content += "</ul></ul>"
-
-    return HTMLResponse(content=html_content)
+    # Render results
+    html = "<h2>Results</h2>"
+    for idx, row in df.iterrows():
+        html += f"<div><b>{row.FileName}</b> - <a href='/csv/{csv_name}'>{csv_name}</a></div><br>"
+    return HTMLResponse(content=html)

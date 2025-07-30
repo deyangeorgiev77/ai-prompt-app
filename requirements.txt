@@ -1,7 +1,5 @@
 fastapi
 uvicorn
 python-multipart
-pillow
-python-docx
-aiofiles
 jinja2
+pandas

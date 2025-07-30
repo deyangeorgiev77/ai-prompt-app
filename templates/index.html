@@ -1,24 +1,25 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Upload</title>
+    <meta charset="UTF-8">
+    <title>AI Video Prompt Generator</title>
 </head>
 <body>
-    <h1>Upload your images and .rtf/.txt file</h1>
-    <form action="/process/" enctype="multipart/form-data" method="post">
-        <label for="start_number">Start number (e.g. 3200):</label><br>
-        <input type="number" id="start_number" name="start_number" required><br><br>
+    <h1>AI Video Prompt Generator</h1>
+    <form action="/upload" method="post" enctype="multipart/form-data">
+        <label>Start number (e.g. 3200):</label><br>
+        <input type="number" name="start_number" required><br><br>
 
-        <label for="template">Paste your template:</label><br>
-        <textarea id="template" name="template" rows="10" cols="60" required></textarea><br><br>
+        <label>Upload .rtf or .txt file:</label><br>
+        <input type="file" name="text_file" accept=".rtf,.txt" required><br><br>
 
-        <label for="rtf_file">Upload .rtf or .txt file:</label><br>
-        <input type="file" id="rtf_file" name="rtf_file" accept=".rtf,.txt" required><br><br>
+        <label>Enter your task instructions:</label><br>
+        <textarea name="task" rows="10" cols="80" placeholder="Paste full task template here..." required></textarea><br><br>
 
-        <label for="jpg_images">Upload JPG images:</label><br>
-        <input type="file" id="jpg_images" name="jpg_images" accept=".jpg,.jpeg" multiple required><br><br>
+        <label>Upload JPG images:</label><br>
+        <input type="file" name="images" accept=".jpg,.jpeg" multiple required><br><br>
 
-        <input type="submit" value="Submit">
+        <input type="submit" value="Generate">
     </form>
 </body>
 </html>
