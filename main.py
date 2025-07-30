@@ -11,18 +11,19 @@ import pandas as pd
 app = FastAPI()
 BASE_DIR = Path(__file__).resolve().parent
 
-# Create required directories
+# Ensure required directories exist
 for folder in ['uploaded_images', 'uploaded_texts', 'generated_csv']:
     (BASE_DIR / folder).mkdir(exist_ok=True)
 
-# Mount static routes
+# Mount static directories
 app.mount('/static', StaticFiles(directory=str(BASE_DIR / 'uploaded_images')), name='static')
 app.mount('/csv', StaticFiles(directory=str(BASE_DIR / 'generated_csv')), name='csv')
 
+# Templates directory
 templates = Jinja2Templates(directory=str(BASE_DIR / 'templates'))
 
 @app.get('/', response_class=HTMLResponse)
-async def form_get(request: Request):
+async def get_form(request: Request):
     return templates.TemplateResponse('index.html', {'request': request})
 
 @app.post('/upload', response_class=HTMLResponse)
@@ -38,9 +39,14 @@ async def upload_and_generate(
     with open(text_path, 'wb') as f:
         shutil.copyfileobj(text_file.file, f)
     content = text_path.read_text(encoding='utf-8', errors='ignore')
-    part_xxxx = content.split('XXXX')[1].split('YYYY')[0].strip() if 'XXXX' in content and 'YYYY' in content else ''
-    keywords = [kw.strip() for kw in content.split('YYYY')[1].splitlines() if kw.strip()] if 'YYYY' in content else []
-
+    # Extract prompt sections
+    part_xxxx = ''
+    if 'XXXX' in content and 'YYYY' in content:
+        part_xxxx = content.split('XXXX')[1].split('YYYY')[0].strip()
+    keywords_raw = []
+    if 'YYYY' in content:
+        keywords_raw = [kw.strip().strip(' ,{}.\\') for kw in content.split('YYYY')[1].splitlines() if kw.strip()]
+    # Build results
     html = '<h2>Results</h2>'
     for idx, img in enumerate(images):
         num = start_number + idx
@@ -50,23 +56,20 @@ async def upload_and_generate(
         img_path = BASE_DIR / 'uploaded_images' / img_name
         with open(img_path, 'wb') as f:
             shutil.copyfileobj(img.file, f)
-        # Prepare CSV
+        # Generate dummy metadata (replace with ChatGPT integration as needed)
         row = {
             'FileName': f'AI-video_{num:05d}.mp4',
             'Title': f'Generated Title {num}',
-            'Description': part_xxxx,
+            'Description': part_xxxx or f'Description for {img_name}',
             'Headline': f'AI Headline {num}',
-            'Keywords': ', '.join(keywords)
+            'Keywords': ', '.join(keywords_raw)
         }
         df = pd.DataFrame([row])
         csv_path = BASE_DIR / 'generated_csv' / csv_name
         df.to_csv(csv_path, index=False)
-        # Prompt text
-        prompt = f"""{task.strip()} {part_xxxx} Keywords: {', '.join(keywords)} > {csv_name}"""
-        # Append to HTML
-        html += f"<div style='margin-bottom:30px;'>"
+        # Append image and download link
+        html += "<div style='margin-bottom:30px;'>"
         html += f"<img src='/static/{img_name}' alt='{img_name}' width='300'><br>"
         html += f"<a href='/csv/{csv_name}'>Download {csv_name}</a><br>"
-        html += f"<pre style='white-space:pre-wrap; background:#f4f4f4; padding:10px;'>{prompt}</pre>"
         html += "</div>"
     return HTMLResponse(content=html)
