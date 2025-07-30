@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
     <title>AI Video Prompt Generator</title>
@@ -7,19 +7,19 @@
 <body>
     <h1>AI Video Prompt Generator</h1>
     <form action="/upload" method="post" enctype="multipart/form-data">
-        <label>Start number (e.g. 3200):</label><br>
-        <input type="number" name="start_number" required><br><br>
+        <label for="start_number">Start number (e.g. 3200):</label><br>
+        <input type="number" id="start_number" name="start_number" required><br><br>
 
-        <label>Upload .rtf or .txt file:</label><br>
-        <input type="file" name="text_file" accept=".rtf,.txt" required><br><br>
+        <label for="text_file">Upload .rtf or .txt file:</label><br>
+        <input type="file" id="text_file" name="text_file" accept=".rtf,.txt" required><br><br>
 
-        <label>Enter your task instructions:</label><br>
-        <textarea name="task" rows="10" cols="80" placeholder="Paste full task template here..." required></textarea><br><br>
+        <label for="task">Enter your task instructions:</label><br>
+        <textarea id="task" name="task" rows="10" cols="80" placeholder="Paste full task template here..." required></textarea><br><br>
 
-        <label>Upload JPG images:</label><br>
-        <input type="file" name="images" accept=".jpg,.jpeg" multiple required><br><br>
+        <label for="images">Upload JPG images:</label><br>
+        <input type="file" id="images" name="images" accept=".jpg,.jpeg" multiple required><br><br>
 
-        <input type="submit" value="Generate">
+        <button type="submit">Generate</button>
     </form>
 </body>
 </html>
