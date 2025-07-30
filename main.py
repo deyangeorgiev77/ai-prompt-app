@@ -11,7 +11,7 @@ import pandas as pd
 app = FastAPI()
 BASE_DIR = Path(__file__).resolve().parent
 
-# Ensure required directories
+# Ensure required directories exist
 for folder in ['uploaded_images', 'uploaded_texts', 'generated_csv']:
     (BASE_DIR / folder).mkdir(exist_ok=True)
 
@@ -34,56 +34,60 @@ async def upload_and_generate(
     images: List[UploadFile] = File(...)
 ):
     # Save text file
-    text_path = BASE_DIR / 'uploaded_texts' / text_file.filename
+    txt_dir = BASE_DIR / 'uploaded_texts'
+    text_path = txt_dir / text_file.filename
     with open(text_path, 'wb') as f:
         shutil.copyfileobj(text_file.file, f)
     content = text_path.read_text(encoding='utf-8', errors='ignore')
-    # Extract parts
-    part_xxxx = ''
+
+    # Extract between XXXX and YYYY
     if 'XXXX' in content and 'YYYY' in content:
-        part_xxxx = content.split('XXXX')[1].split('YYYY')[0].strip()
+        part_xxxx = content.split('XXXX', 1)[1].split('YYYY', 1)[0].strip()
+    else:
+        part_xxxx = ''
+
+    # Extract keywords after YYYY, clean punctuation
     keywords = []
     if 'YYYY' in content:
-        keywords = [kw.strip().strip(' ,{}.\\') for kw in content.split('YYYY')[1].splitlines() if kw.strip()]
+        raw = content.split('YYYY', 1)[1]
+        keywords = [kw.strip().strip(' ,{}.\\') for kw in raw.splitlines() if kw.strip()]
 
-    # Build HTML response
+    # Build HTML and CSV rows
     html = '<h2>Results</h2>'
-    # Prepare rows for CSV
-    rows = []
     for idx, img in enumerate(images):
         num = start_number + idx
         img_name = f'AI_{num:05d}.jpg'
         csv_name = f'AI-video_{num:05d}.csv'
+
         # Save image
         img_path = BASE_DIR / 'uploaded_images' / img_name
         with open(img_path, 'wb') as f:
             shutil.copyfileobj(img.file, f)
-        # Generate fields
-        title = f'AI Video Prompt {num}'
+
+        # Build metadata
+        title = f'Generated Title for {img_name}'
         description = part_xxxx or f'Description for {img_name}'
         headline = f'Headline for {img_name}'
-        # Append row
-        rows.append({
+        # Create CSV file
+        row = {
             'FileName': f'AI-video_{num:05d}.mp4',
             'Title': title,
             'Description': description,
             'Headline': headline,
             'Keywords': ', '.join(keywords)
-        })
-        # Construct prompt display
-        prompt = f"""{task.strip()} {part_xxxx}. Keywords: {', '.join(keywords)} > {csv_name}"""
-        # Append HTML for this image
+        }
+        df = pd.DataFrame([row])
+        csv_path = BASE_DIR / 'generated_csv' / csv_name
+        df.to_csv(csv_path, index=False)
+
+        # Construct prompt display: only part_xxxx and keywords
+        prompt = f"""{part_xxxx}. Keywords: {', '.join(keywords)} > {csv_name}"""
+
+        # Append to HTML
         html += f"<div style='margin-bottom:30px;'>"
         html += f"<img src='/static/{img_name}' width='300'><br>"
-        html += f"<a href='/csv/{csv_name}'>Download {csv_name}</a><br>"
+        html += f"<a href='/csv/{csv_name}' target='_blank'>Download {csv_name}</a><br>"
         html += f"<pre style='white-space:pre-wrap; background:#f4f4f4; padding:10px;'>{prompt}</pre>"
         html += "</div>"
-
-    # Save each CSV separately
-    for row in rows:
-        # Determine path by extracting number from FileName
-        num = row['FileName'].split('_')[-1].split('.')[0]
-        csv_path = BASE_DIR / 'generated_csv' / f'AI-video_{num}.csv'
-        pd.DataFrame([row]).to_csv(csv_path, index=False)
 
     return HTMLResponse(content=html)
