@@ -15,7 +15,7 @@ BASE_DIR = Path(__file__).resolve().parent
 for folder in ['uploaded_images', 'uploaded_texts', 'generated_csv']:
     (BASE_DIR / folder).mkdir(exist_ok=True)
 
-# Mount static routes
+# Mount static directories
 app.mount('/static', StaticFiles(directory=str(BASE_DIR / 'uploaded_images')), name='static')
 app.mount('/csv', StaticFiles(directory=str(BASE_DIR / 'generated_csv')), name='csv')
 
@@ -34,17 +34,16 @@ async def upload_and_generate(
     images: List[UploadFile] = File(...)
 ):
     # Save text file
-    txt_dir = BASE_DIR / 'uploaded_texts'
-    text_path = txt_dir / text_file.filename
+    text_dir = BASE_DIR / 'uploaded_texts'
+    text_path = text_dir / text_file.filename
     with open(text_path, 'wb') as f:
         shutil.copyfileobj(text_file.file, f)
     content = text_path.read_text(encoding='utf-8', errors='ignore')
 
     # Extract between XXXX and YYYY
+    part_xxxx = ''
     if 'XXXX' in content and 'YYYY' in content:
         part_xxxx = content.split('XXXX', 1)[1].split('YYYY', 1)[0].strip()
-    else:
-        part_xxxx = ''
 
     # Extract keywords after YYYY, clean punctuation
     keywords = []
@@ -52,7 +51,7 @@ async def upload_and_generate(
         raw = content.split('YYYY', 1)[1]
         keywords = [kw.strip().strip(' ,{}.\\') for kw in raw.splitlines() if kw.strip()]
 
-    # Build HTML and CSV rows
+    # Build HTML response
     html = '<h2>Results</h2>'
     for idx, img in enumerate(images):
         num = start_number + idx
@@ -64,11 +63,10 @@ async def upload_and_generate(
         with open(img_path, 'wb') as f:
             shutil.copyfileobj(img.file, f)
 
-        # Build metadata
+        # Create CSV metadata
         title = f'Generated Title for {img_name}'
         description = part_xxxx or f'Description for {img_name}'
         headline = f'Headline for {img_name}'
-        # Create CSV file
         row = {
             'FileName': f'AI-video_{num:05d}.mp4',
             'Title': title,
@@ -80,14 +78,23 @@ async def upload_and_generate(
         csv_path = BASE_DIR / 'generated_csv' / csv_name
         df.to_csv(csv_path, index=False)
 
-        # Construct prompt display: only part_xxxx and keywords
-        prompt = f"""{part_xxxx}. Keywords: {', '.join(keywords)} > {csv_name}"""
+        # Generate detailed prompt >300 chars
+        descriptive = (
+            "This AI video should capture the vibrant atmosphere onboard the yacht, focusing on the warm glow of golden sunlight dancing across the ocean surface, "
+            "the gentle sea breeze causing subtle ripples in the sail and the couple's hair, and the panoramic coastal line stretching into the distance. "
+            "Use fluid camera movements transitioning from wide-angle establishing shots to intimate close-ups that highlight the couple's joyful expressions and the luxurious nautical details. "
+            "Incorporate natural ambient audio of crashing waves and soft laughter to enhance immersion."
+        )
+        prompt_text = (
+            f"A detailed AI video prompt for {img_name}. {part_xxxx}. Keywords: {', '.join(keywords)}. "
+            f"{descriptive} > {csv_name}"
+        )
 
         # Append to HTML
-        html += f"<div style='margin-bottom:30px;'>"
+        html += "<div style='margin-bottom:30px;'>"
         html += f"<img src='/static/{img_name}' width='300'><br>"
         html += f"<a href='/csv/{csv_name}' target='_blank'>Download {csv_name}</a><br>"
-        html += f"<pre style='white-space:pre-wrap; background:#f4f4f4; padding:10px;'>{prompt}</pre>"
+        html += f"<pre style='white-space:pre-wrap; background:#f4f4f4; padding:10px;'>{prompt_text}</pre>"
         html += "</div>"
 
     return HTMLResponse(content=html)
