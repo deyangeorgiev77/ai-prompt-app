@@ -1,57 +1,53 @@
-
 from fastapi import FastAPI, Request, UploadFile, File, Form
-from fastapi.responses import HTMLResponse, FileResponse
-from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from pathlib import Path
-import shutil, os, zipfile
+from typing import List
+import shutil
+import os
 
 app = FastAPI()
 BASE_DIR = Path(__file__).resolve().parent
+UPLOAD_DIR = BASE_DIR / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 @app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
+async def form_get(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-@app.post("/generate/")
-async def generate(
+@app.post("/process/")
+async def handle_upload(
     request: Request,
     start_number: int = Form(...),
-    textfile: UploadFile = File(...),
-    images: list[UploadFile] = File(...),
+    template: str = Form(...),
+    text_file: UploadFile = File(...),
+    images: List[UploadFile] = File(...)
 ):
-    upload_dir = BASE_DIR / "uploads"
-    output_dir = BASE_DIR / "output"
-    upload_dir.mkdir(exist_ok=True)
+    output_dir = BASE_DIR / "outputs"
     output_dir.mkdir(exist_ok=True)
 
-    # Save RTF/TXT file
-    text_path = upload_dir / textfile.filename
+    text_path = UPLOAD_DIR / text_file.filename
     with open(text_path, "wb") as f:
-        f.write(await textfile.read())
+        shutil.copyfileobj(text_file.file, f)
 
-    # Save images
     image_paths = []
     for img in images:
-        img_path = upload_dir / img.filename
+        img_path = UPLOAD_DIR / img.filename
         with open(img_path, "wb") as f:
-            f.write(await img.read())
+            shutil.copyfileobj(img.file, f)
         image_paths.append(img_path)
 
-    # Dummy processing step (create a result.txt file)
-    result_path = output_dir / f"AI-video_{start_number:05d}.csv"
-    with open(result_path, "w") as f:
-        f.write("FileName,Title,Description,Headline,Keywords\n")
-        for i, img in enumerate(image_paths):
-            name = f"AI-video_{start_number + i:05d}.mp4"
-            f.write(f"{name},Sample Title,Sample Description,Sample Headline,keyword1; keyword2\n")
+    # Dummy HTML generation placeholder
+    html_content = "<h2>Uploaded files processed.</h2><ul>"
+    html_content += f"<li>Start number: {start_number}</li>"
+    html_content += f"<li>Template content: {template[:100]}...</li>"
+    html_content += f"<li>Text file: {text_file.filename}</li>"
+    html_content += "<li>Images:</li><ul>"
+    for img in image_paths:
+        html_content += f"<li>{img.name}</li>"
+    html_content += "</ul></ul>"
 
-    # Zip output
-    zip_path = output_dir / "results.zip"
-    with zipfile.ZipFile(zip_path, "w") as zipf:
-        zipf.write(result_path, arcname=result_path.name)
-
-    return FileResponse(zip_path, media_type="application/zip", filename="results.zip")
+    return HTMLResponse(content=html_content)
