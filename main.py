@@ -1,53 +1,57 @@
 
 from fastapi import FastAPI, Request, UploadFile, File, Form
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.templating import Jinja2Templates
-from typing import List
-import os
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+import shutil, os, zipfile
 
 app = FastAPI()
+BASE_DIR = Path(__file__).resolve().parent
 
-# Създаване на папка за качени файлове
-os.makedirs("uploaded_images", exist_ok=True)
-os.makedirs("uploaded_rtf", exist_ok=True)
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
-# Монтиране на папката за изображения като статични файлове
-app.mount("/static", StaticFiles(directory="uploaded_images"), name="static")
-
-# Задаване на директорията за шаблони
-templates = Jinja2Templates(directory="templates")
-
-# Начална страница - зарежда index.html
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-# Рут за обработка на формата
-@app.post("/process/")
-async def process_form(
+@app.post("/generate/")
+async def generate(
     request: Request,
     start_number: int = Form(...),
-    rtf_file: UploadFile = File(...),
-    images: List[UploadFile] = File(...)
+    textfile: UploadFile = File(...),
+    images: list[UploadFile] = File(...),
 ):
-    # Запазване на .rtf/.txt файла
-    rtf_path = os.path.join("uploaded_rtf", rtf_file.filename)
-    with open(rtf_path, "wb") as f:
-        f.write(await rtf_file.read())
+    upload_dir = BASE_DIR / "uploads"
+    output_dir = BASE_DIR / "output"
+    upload_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(exist_ok=True)
 
-    # Запазване на JPG файловете
-    saved_filenames = []
-    current_number = start_number
-    for image in images:
-        filename = f"AI_{current_number}.jpg"
-        path = os.path.join("uploaded_images", filename)
-        with open(path, "wb") as f:
-            f.write(await image.read())
-        saved_filenames.append(filename)
-        current_number += 1
+    # Save RTF/TXT file
+    text_path = upload_dir / textfile.filename
+    with open(text_path, "wb") as f:
+        f.write(await textfile.read())
 
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "message": f"Успешно качени {len(saved_filenames)} снимки и {rtf_file.filename}."
-    })
+    # Save images
+    image_paths = []
+    for img in images:
+        img_path = upload_dir / img.filename
+        with open(img_path, "wb") as f:
+            f.write(await img.read())
+        image_paths.append(img_path)
+
+    # Dummy processing step (create a result.txt file)
+    result_path = output_dir / f"AI-video_{start_number:05d}.csv"
+    with open(result_path, "w") as f:
+        f.write("FileName,Title,Description,Headline,Keywords\n")
+        for i, img in enumerate(image_paths):
+            name = f"AI-video_{start_number + i:05d}.mp4"
+            f.write(f"{name},Sample Title,Sample Description,Sample Headline,keyword1; keyword2\n")
+
+    # Zip output
+    zip_path = output_dir / "results.zip"
+    with zipfile.ZipFile(zip_path, "w") as zipf:
+        zipf.write(result_path, arcname=result_path.name)
+
+    return FileResponse(zip_path, media_type="application/zip", filename="results.zip")
